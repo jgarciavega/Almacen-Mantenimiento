@@ -4,27 +4,55 @@ import prisma from '../prisma';
 export async function movimientosRoutes(app: FastifyInstance) {
   const auth = { onRequest: [(app as any).authenticate] };
 
-  // Listar movimientos con filtros
+  // Listar movimientos con filtros y paginación
   app.get('/', auth, async (request) => {
-    const { productoId, tipo, desde, hasta } = request.query as any;
-    return prisma.movimiento.findMany({
-      where: {
-        ...(productoId && { productoId: Number(productoId) }),
-        ...(tipo && { tipo }),
-        ...(desde || hasta ? {
-          createdAt: {
-            ...(desde && { gte: new Date(desde) }),
-            ...(hasta && { lte: new Date(hasta) }),
-          }
-        } : {}),
-      },
-      include: {
-        producto: { select: { nombre: true, sku: true, unidad: true } },
-        usuario: { select: { nombre: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      take: 200,
-    });
+    const { productoId, tipo, desde, hasta, buscar, page = '1', limit = '20' } = request.query as any;
+
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip     = (pageNum - 1) * limitNum;
+
+    const where: any = {
+      ...(productoId && { productoId: Number(productoId) }),
+      ...(tipo && tipo !== 'TODOS' && { tipo }),
+      ...(desde || hasta ? {
+        createdAt: {
+          ...(desde && { gte: new Date(desde) }),
+          ...(hasta && { lte: new Date(new Date(hasta).setHours(23, 59, 59, 999)) }),
+        }
+      } : {}),
+      ...(buscar && {
+        OR: [
+          { producto: { nombre: { contains: buscar, mode: 'insensitive' } } },
+          { producto: { sku:    { contains: buscar, mode: 'insensitive' } } },
+          { motivo:       { contains: buscar, mode: 'insensitive' } },
+          { referencia:   { contains: buscar, mode: 'insensitive' } },
+          { recibidoPor:  { contains: buscar, mode: 'insensitive' } },
+        ],
+      }),
+    };
+
+    const [data, total] = await prisma.$transaction([
+      prisma.movimiento.findMany({
+        where,
+        include: {
+          producto: { select: { nombre: true, sku: true, unidad: true } },
+          usuario:  { select: { nombre: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum,
+      }),
+      prisma.movimiento.count({ where }),
+    ]);
+
+    return {
+      data,
+      total,
+      page:       pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      limit:      limitNum,
+    };
   });
 
   // Registrar movimiento (entrada o salida)

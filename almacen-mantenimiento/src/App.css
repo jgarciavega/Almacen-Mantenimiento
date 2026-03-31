@@ -1,1 +1,23 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --bg-main: #f3f4f6;
+  --bg-card: #ffffff;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --border-color: #e5e7eb;
+  --skeleton-base: #e5e7eb;
+  --skeleton-shine: #f9fafb;
+}
+
+.dark {
+  --bg-main: #0f172a;
+  --bg-card: #1e293b;
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --border-color: #334155;
+  --skeleton-base: #334155;
+  --skeleton-shine: #475569;
+}

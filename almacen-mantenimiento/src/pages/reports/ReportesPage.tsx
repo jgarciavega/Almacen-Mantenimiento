@@ -1,19 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
-import { BarChart2, Download, TrendingUp, Package, Printer } from 'lucide-react';
+import { BarChart2, Download, TrendingUp, Package, Printer, FileText } from 'lucide-react';
 import api from '../../services/api';
+import { Skeleton } from '../../components/ui/Skeleton';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function getConfig() {
   try { return JSON.parse(localStorage.getItem('almacen-config') || '{}'); } catch { return {}; }
 }
 
 export default function ReportesPage() {
-  const { data: masUsados = [] } = useQuery({
+  const { data: masUsados = [], isLoading: loadingUsados } = useQuery({
     queryKey: ['mas-usados'],
     queryFn: () => api.get('/reportes/mas-usados').then(r => r.data),
     retry: false,
   });
 
-  const { data: stock = [] } = useQuery({
+  const { data: stock = [], isLoading: loadingStock } = useQuery({
     queryKey: ['stock'],
     queryFn: () => api.get('/reportes/stock').then(r => r.data),
     retry: false,
@@ -30,6 +33,68 @@ export default function ReportesPage() {
     a.download = `stock-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportarPDF = () => {
+    const cfg = getConfig();
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const fecha = new Date().toLocaleString('es-MX');
+    const titulo = cfg.sistemaNombre || 'Control de Almacén';
+    const empresa = cfg.empresaNombre || '';
+
+    doc.setFillColor(30, 58, 95);
+    doc.rect(0, 0, 297, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text(empresa ? `${empresa} — ${titulo}` : titulo, 10, 10);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Reporte de Stock · Generado: ${fecha} · Total: ${stock.length} artículos`, 10, 17);
+
+    const rows = stock.map((p: any) => [
+      p.sku,
+      p.nombre,
+      p.categoria.nombre,
+      String(p.stockActual),
+      String(p.stockMinimo),
+      p.unidad,
+      p.stockActual === 0 ? 'SIN STOCK' : p.stockActual <= p.stockMinimo ? 'STOCK BAJO' : 'OK',
+      p.ubicacion ?? '—',
+    ]);
+
+    autoTable(doc, {
+      startY: 26,
+      head: [['SKU', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Unidad', 'Estado', 'Ubicación']],
+      body: rows,
+      styles: { fontSize: 8, cellPadding: 3 },
+      headStyles: { fillColor: [30, 58, 95], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [249, 250, 251] },
+      didParseCell: (data) => {
+        if (data.column.index === 6 && data.section === 'body') {
+          const val = String(data.cell.raw);
+          if (val === 'SIN STOCK') {
+            data.cell.styles.textColor = [220, 38, 38];
+            data.cell.styles.fontStyle = 'bold';
+          } else if (val === 'STOCK BAJO') {
+            data.cell.styles.textColor = [234, 88, 12];
+            data.cell.styles.fontStyle = 'bold';
+          } else {
+            data.cell.styles.textColor = [22, 163, 74];
+          }
+        }
+      },
+    });
+
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(150);
+      doc.text(`Página ${i} de ${pageCount}`, 287, 205, { align: 'right' });
+    }
+
+    doc.save(`reporte-stock-${new Date().toISOString().slice(0,10)}.pdf`);
   };
 
   const imprimir = () => {
@@ -79,28 +144,42 @@ export default function ReportesPage() {
 
   return (
     <div className="p-8 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reportes</h1>
-          <p className="text-gray-500 text-sm mt-1">Análisis del inventario</p>
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Reportes</h1>
+          <p className="text-gray-500 dark:text-slate-400 text-sm mt-1">Análisis del inventario</p>
         </div>
-        <button onClick={exportarCSV} className="flex items-center gap-2 border border-gray-300 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium">
+        <button onClick={exportarCSV} className="flex items-center gap-2 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Download className="w-4 h-4" /> Exportar CSV
         </button>
-        <button onClick={imprimir} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium">
+        <button onClick={exportarPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <FileText className="w-4 h-4" /> Exportar PDF
+        </button>
+        <button onClick={imprimir} className="flex items-center gap-2 bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Printer className="w-4 h-4" /> Imprimir
         </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top artículos más usados */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-5 transition-colors">
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp className="w-5 h-5 text-blue-500" />
-            <h2 className="font-semibold text-gray-900">Artículos más usados</h2>
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100">Artículos más usados</h2>
           </div>
-          {masUsados.length === 0 ? (
-            <p className="text-gray-400 text-sm text-center py-8">Sin datos de salidas</p>
+          {loadingUsados ? (
+            <div className="space-y-3">
+              {[1,2,3,4,5].map(i => (
+                <div key={i} className="space-y-1">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                  <Skeleton className="h-2 w-full rounded-full" />
+                </div>
+              ))}
+            </div>
+          ) : masUsados.length === 0 ? (
+            <p className="text-gray-400 dark:text-slate-500 text-sm text-center py-8">Sin datos de salidas</p>
           ) : (
             <div className="space-y-3">
               {masUsados.map((item: any, i: number) => {
@@ -109,10 +188,10 @@ export default function ReportesPage() {
                 return (
                   <div key={item.id}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span className="font-medium text-gray-900">{i + 1}. {item.nombre}</span>
-                      <span className="text-gray-500">{item.totalSalidas} {item.unidad}</span>
+                      <span className="font-medium text-gray-900 dark:text-slate-100">{i + 1}. {item.nombre}</span>
+                      <span className="text-gray-500 dark:text-slate-400">{item.totalSalidas} {item.unidad}</span>
                     </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
                       <div className="h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
                     </div>
                   </div>
@@ -122,24 +201,25 @@ export default function ReportesPage() {
           )}
         </div>
 
-        {/* Stock actual */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+        <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-5 transition-colors">
           <div className="flex items-center gap-2 mb-4">
             <Package className="w-5 h-5 text-green-500" />
-            <h2 className="font-semibold text-gray-900">Stock actual</h2>
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100">Stock actual</h2>
           </div>
           <div className="space-y-2 max-h-80 overflow-y-auto">
-            {stock.length === 0 ? (
-              <p className="text-gray-400 text-sm text-center py-8">Sin artículos</p>
+            {loadingStock ? (
+              Array.from({length: 6}).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-lg" />)
+            ) : stock.length === 0 ? (
+              <p className="text-gray-400 dark:text-slate-500 text-sm text-center py-8">Sin artículos</p>
             ) : stock.map((p: any) => (
               <div key={p.id} className={`flex justify-between items-center p-2.5 rounded-lg ${
-                p.stockActual <= p.stockMinimo ? 'bg-red-50' : 'bg-gray-50'
+                p.stockActual <= p.stockMinimo ? 'bg-red-50 dark:bg-red-900/20' : 'bg-gray-50 dark:bg-slate-700/50'
               }`}>
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{p.nombre}</p>
-                  <p className="text-xs text-gray-500">{p.categoria.nombre}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-slate-100">{p.nombre}</p>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">{p.categoria.nombre}</p>
                 </div>
-                <span className={`text-sm font-semibold ${p.stockActual <= p.stockMinimo ? 'text-red-600' : 'text-gray-700'}`}>
+                <span className={`text-sm font-semibold ${p.stockActual <= p.stockMinimo ? 'text-red-600 dark:text-red-400' : 'text-gray-700 dark:text-slate-200'}`}>
                   {p.stockActual} {p.unidad}
                 </span>
               </div>
@@ -148,44 +228,53 @@ export default function ReportesPage() {
         </div>
       </div>
 
-      {/* Tabla completa */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100">
-          <BarChart2 className="w-5 h-5 text-gray-500" />
-          <h2 className="font-semibold text-gray-900">Reporte de inventario completo</h2>
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 transition-colors">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-slate-700">
+          <BarChart2 className="w-5 h-5 text-gray-500 dark:text-slate-400" />
+          <h2 className="font-semibold text-gray-900 dark:text-slate-100">Reporte de inventario completo</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                {['SKU', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Estado', 'Unidad', 'Ubicación'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {stock.map((p: any) => (
-                <tr key={p.id} className={`hover:bg-gray-50 ${p.stockActual <= p.stockMinimo ? 'bg-red-50/30' : ''}`}>
-                  <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.sku}</td>
-                  <td className="px-4 py-3 font-medium text-gray-900">{p.nombre}</td>
-                  <td className="px-4 py-3 text-gray-600">{p.categoria.nombre}</td>
-                  <td className="px-4 py-3 font-semibold">{p.stockActual}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.stockMinimo}</td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      p.stockActual === 0 ? 'bg-red-100 text-red-700' :
-                      p.stockActual <= p.stockMinimo ? 'bg-orange-100 text-orange-700' :
-                      'bg-green-100 text-green-700'
-                    }`}>
-                      {p.stockActual === 0 ? 'Sin stock' : p.stockActual <= p.stockMinimo ? 'Stock bajo' : 'OK'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">{p.unidad}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.ubicacion || '—'}</td>
-                </tr>
+          {loadingStock ? (
+            <div className="p-4 space-y-3">
+              {Array.from({length: 8}).map((_, i) => (
+                <div key={i} className="flex gap-4">
+                  {[1,2,3,4,5,6,7,8].map(j => <Skeleton key={j} className={`h-8 ${j === 2 ? 'flex-[2]' : 'flex-1'}`} />)}
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-slate-900">
+                <tr>
+                  {['SKU', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Estado', 'Unidad', 'Ubicación'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
+                {stock.map((p: any) => (
+                  <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${p.stockActual <= p.stockMinimo ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">{p.sku}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-slate-100">{p.nombre}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{p.categoria.nombre}</td>
+                    <td className="px-4 py-3 font-semibold dark:text-slate-200">{p.stockActual}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.stockMinimo}</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                        p.stockActual === 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' :
+                        p.stockActual <= p.stockMinimo ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400' :
+                        'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                      }`}>
+                        {p.stockActual === 0 ? 'Sin stock' : p.stockActual <= p.stockMinimo ? 'Stock bajo' : 'OK'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.unidad}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.ubicacion || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>
