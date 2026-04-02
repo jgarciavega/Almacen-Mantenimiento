@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode, X, Download } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, AlertTriangle, QrCode, X, Download, History, ArrowDown, ArrowUp, Tag } from 'lucide-react';
+import { useAuthStore } from '../../store/authStore';
 import { QRCodeSVG } from 'qrcode.react';
+import { toast } from 'sonner';
 import api from '../../services/api';
 import { Producto } from '../../types';
 import { TableSkeleton } from '../../components/ui/Skeleton';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 type FormErrors = {
   nombre?: string;
@@ -36,12 +39,22 @@ export default function InventarioPage() {
   const [form, setForm] = useState({ nombre: '', sku: '', descripcion: '', stockActual: 0, stockMinimo: 1, unidad: 'pza', ubicacion: '', categoriaId: '' });
   const [formErrors, setFormErrors] = useState<FormErrors>({});
   const [qrProducto, setQrProducto] = useState<Producto | null>(null);
+  const [historialProducto, setHistorialProducto] = useState<Producto | null>(null);
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [showCategorias, setShowCategorias] = useState(false);
+  const [page, setPage] = useState(1);
+  const { usuario: yo } = useAuthStore();
 
-  const { data: productos = [], isLoading } = useQuery<Producto[]>({
-    queryKey: ['productos', buscar],
-    queryFn: () => api.get('/productos', { params: { buscar } }).then(r => r.data),
+  const { data: result, isLoading } = useQuery({
+    queryKey: ['productos', buscar, page],
+    queryFn: () => api.get('/productos', { params: { buscar, page, limit: 20 } }).then(r => r.data),
     retry: false,
+    placeholderData: (prev) => prev,
   });
+
+  const productos: Producto[] = result?.data ?? [];
+  const totalProductos: number = result?.total ?? 0;
+  const totalPages: number = result?.totalPages ?? 1;
 
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias'],
@@ -53,12 +66,22 @@ export default function InventarioPage() {
     mutationFn: (data: any) => editando
       ? api.put(`/productos/${editando.id}`, data)
       : api.post('/productos', data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['productos'] }); cerrarForm(); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productos'] });
+      toast.success(editando ? 'Artículo actualizado' : 'Artículo creado');
+      cerrarForm();
+    },
+    onError: () => toast.error('Error al guardar el artículo'),
   });
 
   const eliminarMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/productos/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['productos'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['productos'] });
+      toast.success('Artículo eliminado');
+      setConfirmId(null);
+    },
+    onError: () => { toast.error('Error al eliminar el artículo'); setConfirmId(null); },
   });
 
   const abrirEditar = (p: Producto) => {
@@ -111,11 +134,21 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">Inventario</h1>
-          <p className="text-gray-500 dark:text-slate-400 text-sm mt-1">{productos.length} artículos</p>
+          <p className="text-gray-500 dark:text-slate-400 text-sm mt-1">{totalProductos} artículos</p>
         </div>
-        <button onClick={() => { setShowForm(true); setFormErrors({}); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-          <Plus className="w-4 h-4" /> Nuevo artículo
-        </button>
+        <div className="flex items-center gap-2">
+          {yo?.rol === 'ADMIN' && (
+            <button
+              onClick={() => setShowCategorias(true)}
+              className="flex items-center gap-2 border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-slate-700"
+            >
+              <Tag className="w-4 h-4" /> Categorías
+            </button>
+          )}
+          <button onClick={() => { setShowForm(true); setFormErrors({}); }} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+            <Plus className="w-4 h-4" /> Nuevo artículo
+          </button>
+        </div>
       </div>
 
       {/* Buscador */}
@@ -123,7 +156,7 @@ export default function InventarioPage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           value={buscar}
-          onChange={e => setBuscar(e.target.value)}
+          onChange={e => { setBuscar(e.target.value); setPage(1); }}
           placeholder="Buscar artículo..."
           className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-400"
         />
@@ -164,15 +197,44 @@ export default function InventarioPage() {
                   <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.ubicacion || '—'}</td>
                   <td className="px-4 py-3">
                     <div className="flex gap-2">
+                      <button onClick={() => setHistorialProducto(p)} className="p-1 text-gray-400 hover:text-green-600 dark:hover:text-green-400" title="Ver historial"><History className="w-4 h-4" /></button>
                       <button onClick={() => setQrProducto(p)} className="p-1 text-gray-400 hover:text-purple-600 dark:hover:text-purple-400" title="Ver QR"><QrCode className="w-4 h-4" /></button>
                       <button onClick={() => abrirEditar(p)} className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"><Pencil className="w-4 h-4" /></button>
-                      <button onClick={() => { if (confirm('¿Eliminar este artículo?')) eliminarMutation.mutate(p.id); }} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                      <button onClick={() => setConfirmId(p.id)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        )}
+
+        {/* Paginación */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-slate-700">
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              Mostrando {productos.length} de {totalProductos} artículos
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(p => p - 1)}
+                disabled={page === 1}
+                className="px-3 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ← Anterior
+              </button>
+              <span className="text-sm text-gray-600 dark:text-slate-300 px-2">
+                {page} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage(p => p + 1)}
+                disabled={page === totalPages}
+                className="px-3 py-1 text-sm border border-gray-300 dark:border-slate-600 rounded-lg text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Siguiente →
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -272,6 +334,213 @@ export default function InventarioPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="¿Eliminar artículo?"
+        description="Esta acción no se puede deshacer."
+        loading={eliminarMutation.isPending}
+        onConfirm={() => confirmId !== null && eliminarMutation.mutate(confirmId)}
+        onCancel={() => setConfirmId(null)}
+      />
+
+      {/* Modal Historial */}
+      {historialProducto && (
+        <HistorialModal producto={historialProducto} onClose={() => setHistorialProducto(null)} />
+      )}
+
+      {/* Modal Categorías */}
+      {showCategorias && (
+        <CategoriasModal onClose={() => setShowCategorias(false)} />
+      )}
+    </div>
+  );
+}
+
+function HistorialModal({ producto, onClose }: { producto: Producto; onClose: () => void }) {
+  const { data: movimientos = [], isLoading } = useQuery({
+    queryKey: ['historial', producto.id],
+    queryFn: () => api.get(`/reportes/historial/${producto.id}`).then(r => r.data),
+    retry: false,
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 dark:text-slate-100">Historial de movimientos</h2>
+            <p className="text-sm text-gray-500 dark:text-slate-400 mt-0.5">{producto.nombre} · <span className="font-mono text-xs">{producto.sku}</span></p>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="overflow-y-auto flex-1">
+          {isLoading ? (
+            <div className="p-6 text-center text-gray-400 dark:text-slate-500">Cargando...</div>
+          ) : movimientos.length === 0 ? (
+            <div className="p-12 text-center text-gray-400 dark:text-slate-500">Sin movimientos registrados</div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-slate-900 sticky top-0">
+                <tr>
+                  {['Tipo', 'Cantidad', 'Recibido por', 'Motivo', 'Referencia', 'Usuario', 'Fecha'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase whitespace-nowrap">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
+                {movimientos.map((m: any) => (
+                  <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/50">
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
+                        m.tipo === 'ENTRADA' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                      }`}>
+                        {m.tipo === 'ENTRADA' ? <ArrowDown className="w-3 h-3" /> : <ArrowUp className="w-3 h-3" />}
+                        {m.tipo}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold dark:text-slate-200">{m.cantidad} {producto.unidad}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{m.recibidoPor || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400 max-w-[140px] truncate">{m.motivo || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{m.referencia || '—'}</td>
+                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{m.usuario.nombre}</td>
+                    <td className="px-4 py-3 text-gray-400 dark:text-slate-500 text-xs whitespace-nowrap">{new Date(m.createdAt).toLocaleString('es-MX')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="px-6 py-3 border-t border-gray-100 dark:border-slate-700 text-xs text-gray-400 dark:text-slate-500">
+          {movimientos.length} movimientos · Stock actual: <span className="font-semibold text-gray-700 dark:text-slate-300">{producto.stockActual} {producto.unidad}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sub-componente: Gestión de Categorías ─────────────────────────────────
+function CategoriasModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [nuevaNombre, setNuevaNombre] = useState('');
+
+  const { data: categorias = [], isLoading } = useQuery({
+    queryKey: ['categorias'],
+    queryFn: () => api.get('/productos/categorias/lista').then(r => r.data),
+  });
+
+  const crearMutation = useMutation({
+    mutationFn: (nombre: string) => api.post('/productos/categorias', { nombre }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categorias'] }); toast.success('Categoría creada'); setNuevaNombre(''); },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? 'Error al crear la categoría'),
+  });
+
+  const editarMutation = useMutation({
+    mutationFn: ({ id, nombre }: { id: number; nombre: string }) => api.put(`/productos/categorias/${id}`, { nombre }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categorias'] }); toast.success('Categoría actualizada'); setEditandoId(null); },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? 'Error al editar la categoría'),
+  });
+
+  const eliminarMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/productos/categorias/${id}`),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['categorias'] }); toast.success('Categoría eliminada'); },
+    onError: (err: any) => toast.error(err?.response?.data?.error ?? 'No se puede eliminar'),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[85vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+          <div className="flex items-center gap-2">
+            <Tag className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100">Categorías</h2>
+          </div>
+          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Lista */}
+        <div className="overflow-y-auto flex-1 px-4 py-3 space-y-1">
+          {isLoading ? (
+            <p className="text-center text-gray-400 dark:text-slate-500 py-6 text-sm">Cargando...</p>
+          ) : (categorias as any[]).length === 0 ? (
+            <p className="text-center text-gray-400 dark:text-slate-500 py-6 text-sm">Sin categorías</p>
+          ) : (categorias as any[]).map((c: any) => (
+            <div key={c.id} className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700/50 group">
+              {editandoId === c.id ? (
+                <>
+                  <input
+                    autoFocus
+                    value={editNombre}
+                    onChange={e => setEditNombre(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') editarMutation.mutate({ id: c.id, nombre: editNombre });
+                      if (e.key === 'Escape') setEditandoId(null);
+                    }}
+                    className="flex-1 border border-blue-400 rounded px-2 py-1 text-sm bg-white dark:bg-slate-700 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={() => editarMutation.mutate({ id: c.id, nombre: editNombre })}
+                    disabled={editarMutation.isPending}
+                    className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    OK
+                  </button>
+                  <button onClick={() => setEditandoId(null)} className="text-xs px-2 py-1 border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded hover:bg-gray-50 dark:hover:bg-slate-700">
+                    ✕
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="flex-1 text-sm text-gray-800 dark:text-slate-200">{c.nombre}</span>
+                  <button
+                    onClick={() => { setEditandoId(c.id); setEditNombre(c.nombre); }}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-opacity"
+                    title="Editar"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => eliminarMutation.mutate(c.id)}
+                    disabled={eliminarMutation.isPending}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded transition-opacity disabled:opacity-30"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Agregar nueva */}
+        <div className="px-4 py-4 border-t border-gray-100 dark:border-slate-700">
+          <form
+            onSubmit={e => { e.preventDefault(); if (nuevaNombre.trim()) crearMutation.mutate(nuevaNombre.trim()); }}
+            className="flex gap-2"
+          >
+            <input
+              value={nuevaNombre}
+              onChange={e => setNuevaNombre(e.target.value)}
+              placeholder="Nueva categoría..."
+              className="flex-1 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={!nuevaNombre.trim() || crearMutation.isPending}
+              className="flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+            >
+              <Plus className="w-4 h-4" /> Agregar
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

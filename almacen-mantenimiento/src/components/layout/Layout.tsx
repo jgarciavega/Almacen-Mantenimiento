@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Toaster } from 'sonner';
 import {
   LayoutDashboard, Package, ArrowLeftRight,
   Truck, Users, BarChart2, LogOut, Warehouse, Settings, Sun, Moon
@@ -109,6 +110,7 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+      <Toaster richColors position="top-right" theme={isDark ? 'dark' : 'light'} />
     </div>
   );
 }

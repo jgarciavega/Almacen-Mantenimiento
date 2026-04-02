@@ -1,11 +1,16 @@
 import { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
 import prisma from '../prisma';
+import { LoginSchema, formatZodErrors } from '../schemas';
 
 export async function authRoutes(app: FastifyInstance) {
   app.post('/login', async (request, reply) => {
-    const { email, password } = request.body as { email: string; password: string };
+    const parsed = LoginSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
+    }
 
+    const { email, password } = parsed.data;
     const usuario = await prisma.usuario.findUnique({ where: { email } });
     if (!usuario || !usuario.activo) {
       return reply.status(401).send({ error: 'Credenciales inválidas' });

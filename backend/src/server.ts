@@ -16,8 +16,14 @@ app.register(cors, {
   credentials: true,
 });
 
+const jwtSecret = process.env.JWT_SECRET;
+if (!jwtSecret) {
+  console.error('❌ FATAL: JWT_SECRET no está definido en las variables de entorno.');
+  process.exit(1);
+}
+
 app.register(jwt, {
-  secret: process.env.JWT_SECRET || 'supersecreto',
+  secret: jwtSecret,
 });
 
 // Decorador para autenticar rutas

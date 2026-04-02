@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,82 +8,84 @@ datasource db {
 }
 
 model Usuario {
-  id        Int       @id @default(autoincrement())
-  nombre    String
-  email     String    @unique
-  password  String
-  rol       Rol       @default(ALMACENISTA)
-  activo    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
+  id          Int          @id @default(autoincrement())
+  nombre      String
+  email       String       @unique
+  password    String
+  rol         Rol          @default(ALMACENISTA)
+  activo      Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   movimientos Movimiento[]
 }
 
 model Categoria {
-  id        Int       @id @default(autoincrement())
-  nombre    String    @unique
-  createdAt DateTime  @default(now())
-
+  id        Int        @id @default(autoincrement())
+  nombre    String     @unique
+  createdAt DateTime   @default(now())
   productos Producto[]
 }
 
 model Proveedor {
-  id        Int       @id @default(autoincrement())
+  id        Int                 @id @default(autoincrement())
   nombre    String
   contacto  String?
   telefono  String?
   email     String?
-  activo    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
+  activo    Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
   productos ProductoProveedor[]
 }
 
 model Producto {
-  id           Int       @id @default(autoincrement())
-  nombre       String
-  sku          String    @unique
-  descripcion  String?
-  stockActual  Int       @default(0)
-  stockMinimo  Int       @default(1)
-  unidad       String    @default("pza")
-  ubicacion    String?
-  activo       Boolean   @default(true)
-  categoriaId  Int
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          Int                 @id @default(autoincrement())
+  nombre      String
+  sku         String              @unique
+  descripcion String?
+  stockActual Int                 @default(0)
+  stockMinimo Int                 @default(1)
+  unidad      String              @default("pza")
+  ubicacion   String?
+  activo      Boolean             @default(true)
+  categoriaId Int
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  movimientos Movimiento[]
+  categoria   Categoria           @relation(fields: [categoriaId], references: [id])
+  proveedores ProductoProveedor[]
 
-  categoria    Categoria           @relation(fields: [categoriaId], references: [id])
-  proveedores  ProductoProveedor[]
-  movimientos  Movimiento[]
+  @@index([categoriaId])
+  @@index([nombre])
+  @@index([activo])
 }
 
 model ProductoProveedor {
-  productoId   Int
-  proveedorId  Int
-
-  producto     Producto  @relation(fields: [productoId], references: [id])
-  proveedor    Proveedor @relation(fields: [proveedorId], references: [id])
+  productoId  Int
+  proveedorId Int
+  producto    Producto  @relation(fields: [productoId], references: [id])
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
 
   @@id([productoId, proveedorId])
 }
 
 model Movimiento {
-  id             Int             @id @default(autoincrement())
-  tipo           TipoMovimiento
-  cantidad       Int
-  motivo         String?
-  referencia     String?
-  entregadoPor   String?
-  recibidoPor    String?
-  productoId     Int
-  usuarioId      Int
-  createdAt      DateTime        @default(now())
+  id           Int            @id @default(autoincrement())
+  tipo         TipoMovimiento
+  cantidad     Int
+  motivo       String?
+  referencia   String?
+  productoId   Int
+  usuarioId    Int
+  createdAt    DateTime       @default(now())
+  entregadoPor String?
+  recibidoPor  String?
+  producto     Producto       @relation(fields: [productoId], references: [id])
+  usuario      Usuario        @relation(fields: [usuarioId], references: [id])
 
-  producto     Producto @relation(fields: [productoId], references: [id])
-  usuario      Usuario  @relation(fields: [usuarioId], references: [id])
+  @@index([productoId])
+  @@index([usuarioId])
+  @@index([createdAt])
 }
 
 enum Rol {

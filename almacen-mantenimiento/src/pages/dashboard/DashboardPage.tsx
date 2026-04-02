@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ArrowUp, ArrowDown, X, MapPin } from 'lucide-react';
+import { Package, ArrowLeftRight, AlertTriangle, TrendingUp, ArrowUp, ArrowDown, X, MapPin, BarChart2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
 import api from '../../services/api';
 import { Resumen } from '../../types';
 import { StatsSkeleton } from '../../components/ui/Skeleton';
+import { useThemeStore } from '../../store/themeStore';
 
 type ModalType = 'articulos' | 'movimientos' | 'alertas' | null;
 
@@ -45,6 +47,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 
 export default function DashboardPage() {
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+  const { isDark } = useThemeStore();
 
   const { data, isLoading, isError } = useQuery<Resumen>({
     queryKey: ['resumen'],
@@ -52,11 +55,35 @@ export default function DashboardPage() {
     retry: false,
   });
 
-  const { data: alertas } = useQuery({
-    queryKey: ['alertas'],
-    queryFn: () => api.get('/alertas').then(r => r.data),
+  // Últimos 30 días para gráfica
+  const desde30 = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - 29); d.setHours(0,0,0,0);
+    return d.toISOString();
+  }, []);
+
+  const { data: movs30 = [] } = useQuery({
+    queryKey: ['movimientos-30', desde30],
+    queryFn: () => api.get('/reportes/movimientos', { params: { desde: desde30 } }).then(r => r.data),
     retry: false,
   });
+
+  const chartData = useMemo(() => {
+    const map: Record<string, { fecha: string; Entradas: number; Salidas: number }> = {};
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString('es-MX', { month: 'short', day: 'numeric' });
+      map[key] = { fecha: label, Entradas: 0, Salidas: 0 };
+    }
+    (movs30 as any[]).forEach((m: any) => {
+      const key = new Date(m.createdAt).toISOString().slice(0, 10);
+      if (map[key]) {
+        if (m.tipo === 'ENTRADA') map[key].Entradas += m.cantidad;
+        else map[key].Salidas += m.cantidad;
+      }
+    });
+    return Object.values(map);
+  }, [movs30]);
 
   if (isLoading) return <StatsSkeleton />;
 
@@ -76,7 +103,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard icon={Package}        label="Total artículos"   value={data?.totalProductos ?? '--'}      color="bg-blue-500"   onClick={() => setActiveModal('articulos')} />
         <StatCard icon={ArrowLeftRight} label="Movimientos hoy"   value={data?.totalMovimientosHoy ?? '--'} color="bg-green-500"  onClick={() => setActiveModal('movimientos')} />
-        <StatCard icon={AlertTriangle}  label="Alertas de stock"  value={data?.productosConAlerta ?? (alertas?.total ?? '--')} color="bg-orange-500" onClick={() => setActiveModal('alertas')} />
+        <StatCard icon={AlertTriangle}  label="Alertas de stock"  value={data?.productosConAlerta ?? '--'} color="bg-orange-500" onClick={() => setActiveModal('alertas')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -119,11 +146,11 @@ export default function DashboardPage() {
             <AlertTriangle className="w-5 h-5 text-orange-500" />
             <h2 className="font-semibold text-gray-900 dark:text-slate-100">Alertas de stock</h2>
           </div>
-          {!alertas?.alertas?.length ? (
+          {!data?.alertas?.length ? (
             <p className="text-gray-400 dark:text-slate-500 text-sm text-center py-8">✅ Todos los artículos tienen stock suficiente</p>
           ) : (
             <div className="space-y-2">
-              {alertas.alertas.slice(0, 6).map((a: any) => (
+              {data.alertas.slice(0, 6).map((a: any) => (
                 <div key={a.id} className={`flex items-center justify-between p-2.5 rounded-lg ${
                   a.critico ? 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800' : 'bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800'
                 }`}>
@@ -139,6 +166,46 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Gráfica de consumo — últimos 30 días */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-5 transition-colors">
+        <div className="flex items-center gap-2 mb-5">
+          <BarChart2 className="w-5 h-5 text-blue-500" />
+          <h2 className="font-semibold text-gray-900 dark:text-slate-100">Consumo últimos 30 días</h2>
+          <span className="ml-auto text-xs text-gray-400 dark:text-slate-500">Unidades totales por día</span>
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart data={chartData} margin={{ top: 0, right: 8, left: -20, bottom: 0 }} barSize={8} barGap={2}>
+            <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#334155' : '#f1f5f9'} vertical={false} />
+            <XAxis
+              dataKey="fecha"
+              tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#9ca3af' }}
+              tickLine={false}
+              axisLine={false}
+              interval={4}
+            />
+            <YAxis
+              tick={{ fontSize: 10, fill: isDark ? '#94a3b8' : '#9ca3af' }}
+              tickLine={false}
+              axisLine={false}
+              allowDecimals={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: isDark ? '#1e293b' : '#fff',
+                border: `1px solid ${isDark ? '#334155' : '#e5e7eb'}`,
+                borderRadius: '0.5rem',
+                fontSize: '12px',
+                color: isDark ? '#f1f5f9' : '#111827',
+              }}
+              cursor={{ fill: isDark ? '#334155' : '#f3f4f6' }}
+            />
+            <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '12px' }} />
+            <Bar dataKey="Entradas" fill="#22c55e" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="Salidas"  fill="#ef4444" radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
       </div>
 
       {activeModal === 'articulos' && (

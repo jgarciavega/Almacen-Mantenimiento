@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, ArrowDown, ArrowUp, User, Search, Filter, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { toast } from 'sonner';
 import api from '../../services/api';
 import { Movimiento } from '../../types';
 import { TableSkeleton } from '../../components/ui/Skeleton';
@@ -45,21 +46,24 @@ export default function MovimientosPage() {
   const total:       number       = resp?.total ?? 0;
   const totalPages:  number       = resp?.totalPages ?? 1;
 
-  const { data: productos = [] } = useQuery({
-    queryKey: ['productos'],
-    queryFn:  () => api.get('/productos').then(r => r.data),
+  const { data: productosResult } = useQuery({
+    queryKey: ['productos-selector'],
+    queryFn:  () => api.get('/productos', { params: { limit: 200 } }).then(r => r.data),
     retry: false,
   });
+  const productos = productosResult?.data ?? [];
 
   const registrarMutation = useMutation({
     mutationFn: (data: any) => api.post('/movimientos', data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['movimientos'] });
       qc.invalidateQueries({ queryKey: ['productos'] });
+      toast.success('Movimiento registrado');
       setShowForm(false);
       setForm({ productoId: '', tipo: 'ENTRADA', cantidad: 1, motivo: '', referencia: '', recibidoPor: '' });
       setFormErrors({});
     },
+    onError: () => toast.error('Error al registrar el movimiento'),
   });
 
   const validateForm = () => {

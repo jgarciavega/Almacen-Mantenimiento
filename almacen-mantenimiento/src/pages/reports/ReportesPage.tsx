@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart2, Download, TrendingUp, Package, Printer, FileText } from 'lucide-react';
+import { BarChart2, Download, TrendingUp, Package, Printer, FileText, TableIcon, CalendarRange } from 'lucide-react';
+import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx';
+import { toast } from 'sonner';
 import api from '../../services/api';
 import { Skeleton } from '../../components/ui/Skeleton';
 import jsPDF from 'jspdf';
@@ -10,6 +13,12 @@ function getConfig() {
 }
 
 export default function ReportesPage() {
+  // Rango de fechas para exportar movimientos
+  const today = new Date().toISOString().slice(0, 10);
+  const hace30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [fechaDesde, setFechaDesde] = useState(hace30);
+  const [fechaHasta, setFechaHasta] = useState(today);
+  const [exportandoMov, setExportandoMov] = useState(false);
   const { data: masUsados = [], isLoading: loadingUsados } = useQuery({
     queryKey: ['mas-usados'],
     queryFn: () => api.get('/reportes/mas-usados').then(r => r.data),
@@ -33,6 +42,46 @@ export default function ReportesPage() {
     a.download = `stock-${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const exportarExcel = () => {
+    const cfg = getConfig();
+    const fecha = new Date().toISOString().slice(0, 10);
+
+    // Hoja 1: Stock actual
+    const stockRows = stock.map((p: any) => ({
+      SKU: p.sku,
+      Nombre: p.nombre,
+      Categoría: p.categoria.nombre,
+      'Stock Actual': p.stockActual,
+      'Stock Mínimo': p.stockMinimo,
+      Unidad: p.unidad,
+      Estado: p.stockActual === 0 ? 'Sin stock' : p.stockActual <= p.stockMinimo ? 'Stock bajo' : 'OK',
+      Ubicación: p.ubicacion ?? '',
+    }));
+
+    // Hoja 2: Más usados
+    const usadosRows = masUsados.map((item: any, i: number) => ({
+      '#': i + 1,
+      Nombre: item.nombre,
+      SKU: item.sku,
+      'Total Salidas': item.totalSalidas,
+      Unidad: item.unidad,
+    }));
+
+    const wb = xlsxUtils.book_new();
+    const wsStock = xlsxUtils.json_to_sheet(stockRows);
+    const wsUsados = xlsxUtils.json_to_sheet(usadosRows);
+
+    // Ancho de columnas
+    wsStock['!cols'] = [{ wch: 12 }, { wch: 30 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 12 }, { wch: 18 }];
+    wsUsados['!cols'] = [{ wch: 5 }, { wch: 30 }, { wch: 12 }, { wch: 14 }, { wch: 10 }];
+
+    xlsxUtils.book_append_sheet(wb, wsStock, 'Stock Actual');
+    xlsxUtils.book_append_sheet(wb, wsUsados, 'Más Usados');
+
+    const nombre = cfg.sistemaNombre ? cfg.sistemaNombre.replace(/\s+/g, '-') : 'Almacen';
+    xlsxWriteFile(wb, `${nombre}-reporte-${fecha}.xlsx`);
   };
 
   const exportarPDF = () => {
@@ -142,6 +191,45 @@ export default function ReportesPage() {
     if (win) { win.document.write(html); win.document.close(); win.print(); }
   };
 
+  const exportarMovimientos = async () => {
+    if (!fechaDesde || !fechaHasta) { toast.error('Selecciona el rango de fechas'); return; }
+    setExportandoMov(true);
+    try {
+      const { data } = await api.get('/reportes/movimientos', {
+        params: { desde: fechaDesde, hasta: fechaHasta + 'T23:59:59' },
+      });
+      if (!data || data.length === 0) { toast.info('No hay movimientos en ese rango'); return; }
+
+      const rows = data.map((m: any) => ({
+        Fecha: new Date(m.createdAt).toLocaleString('es-MX'),
+        Tipo: m.tipo,
+        Artículo: m.producto.nombre,
+        SKU: m.producto.sku,
+        Cantidad: m.cantidad,
+        Unidad: m.producto.unidad,
+        Motivo: m.motivo ?? '',
+        Referencia: m.referencia ?? '',
+        'Recibido por': m.recibidoPor ?? '',
+        'Entregado por': m.entregadoPor ?? '',
+        Usuario: m.usuario.nombre,
+      }));
+
+      const wb = xlsxUtils.book_new();
+      const ws = xlsxUtils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 10 }, { wch: 28 }, { wch: 12 }, { wch: 10 },
+        { wch: 8 }, { wch: 20 }, { wch: 14 }, { wch: 18 }, { wch: 18 }, { wch: 18 },
+      ];
+      xlsxUtils.book_append_sheet(wb, ws, 'Movimientos');
+      xlsxWriteFile(wb, `movimientos-${fechaDesde}-al-${fechaHasta}.xlsx`);
+      toast.success(`${data.length} movimientos exportados`);
+    } catch {
+      toast.error('Error al exportar movimientos');
+    } finally {
+      setExportandoMov(false);
+    }
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
@@ -151,6 +239,9 @@ export default function ReportesPage() {
         </div>
         <button onClick={exportarCSV} className="flex items-center gap-2 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <Download className="w-4 h-4" /> Exportar CSV
+        </button>
+        <button onClick={exportarExcel} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+          <TableIcon className="w-4 h-4" /> Exportar Excel
         </button>
         <button onClick={exportarPDF} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
           <FileText className="w-4 h-4" /> Exportar PDF
@@ -276,6 +367,44 @@ export default function ReportesPage() {
             </table>
           )}
         </div>
+      </div>
+      {/* Exportar movimientos por fecha */}
+      <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <CalendarRange className="w-5 h-5 text-blue-500" />
+          <h2 className="font-semibold text-gray-900 dark:text-slate-100">Exportar movimientos por rango de fechas</h2>
+        </div>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">Desde</label>
+            <input
+              type="date"
+              value={fechaDesde}
+              onChange={e => setFechaDesde(e.target.value)}
+              className="border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">Hasta</label>
+            <input
+              type="date"
+              value={fechaHasta}
+              onChange={e => setFechaHasta(e.target.value)}
+              className="border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <button
+            onClick={exportarMovimientos}
+            disabled={exportandoMov}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            <TableIcon className="w-4 h-4" />
+            {exportandoMov ? 'Exportando…' : 'Exportar Excel'}
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-slate-500 mt-3">
+          Genera un Excel con todos los movimientos (entradas y salidas) del período seleccionado.
+        </p>
       </div>
     </div>
   );

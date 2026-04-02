@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify';
 import prisma from '../prisma';
+import { CreateMovimientoSchema, formatZodErrors } from '../schemas';
 
 export async function movimientosRoutes(app: FastifyInstance) {
   const auth = { onRequest: [(app as any).authenticate] };
@@ -25,9 +26,9 @@ export async function movimientosRoutes(app: FastifyInstance) {
         OR: [
           { producto: { nombre: { contains: buscar, mode: 'insensitive' } } },
           { producto: { sku:    { contains: buscar, mode: 'insensitive' } } },
-          { motivo:       { contains: buscar, mode: 'insensitive' } },
-          { referencia:   { contains: buscar, mode: 'insensitive' } },
-          { recibidoPor:  { contains: buscar, mode: 'insensitive' } },
+          { motivo:        { contains: buscar, mode: 'insensitive' } },
+          { referencia:    { contains: buscar, mode: 'insensitive' } },
+          { recibidoPor:   { contains: buscar, mode: 'insensitive' } },
         ],
       }),
     };
@@ -55,16 +56,22 @@ export async function movimientosRoutes(app: FastifyInstance) {
     };
   });
 
-  // Registrar movimiento (entrada o salida)
+  // Registrar movimiento — cualquier usuario autenticado
   app.post('/', auth, async (request, reply) => {
-    const { productoId, tipo, cantidad, motivo, referencia, entregadoPor, recibidoPor } = request.body as any;
+    const parsed = CreateMovimientoSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
+    }
+
+    const { productoId, tipo, cantidad, motivo, referencia, entregadoPor, recibidoPor } = parsed.data;
     const usuarioId = (request as any).user.id;
 
-    const producto = await prisma.producto.findUnique({ where: { id: Number(productoId) } });
+    const producto = await prisma.producto.findUnique({ where: { id: productoId } });
     if (!producto) return reply.status(404).send({ error: 'Producto no encontrado' });
+    if (!producto.activo) return reply.status(400).send({ error: 'El producto está inactivo' });
 
     if (tipo === 'SALIDA' && producto.stockActual < cantidad) {
-      return reply.status(400).send({ error: 'Stock insuficiente' });
+      return reply.status(400).send({ error: `Stock insuficiente. Disponible: ${producto.stockActual} ${producto.unidad}` });
     }
 
     const nuevoStock = tipo === 'ENTRADA'
@@ -73,10 +80,13 @@ export async function movimientosRoutes(app: FastifyInstance) {
 
     const [movimiento] = await prisma.$transaction([
       prisma.movimiento.create({
-        data: { productoId: Number(productoId), tipo, cantidad: Number(cantidad), motivo, referencia, entregadoPor, recibidoPor, usuarioId },
+        data: { productoId, tipo, cantidad, motivo, referencia, entregadoPor, recibidoPor, usuarioId },
       }),
       prisma.producto.update({
-        where: { id: Number(productoId) },
+        where: { id: productoId },
+
+
+
         data: { stockActual: nuevoStock },
       }),
     ]);
