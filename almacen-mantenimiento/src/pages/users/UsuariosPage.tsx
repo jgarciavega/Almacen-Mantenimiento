@@ -4,6 +4,7 @@ import { Plus, Pencil, Shield, UserCheck, KeyRound, UserX, RotateCcw, X } from '
 import { toast } from 'sonner';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
+import ConfirmDialog from '../../components/ui/ConfirmDialog';
 
 const inputCls = 'w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
@@ -22,6 +23,9 @@ export default function UsuariosPage() {
 
   // — mostrar inactivos
   const [mostrarInactivos, setMostrarInactivos] = useState(false);
+
+  // — confirmación desactivar
+  const [confirmId, setConfirmId] = useState<number | null>(null);
 
   const { data: todosUsuarios = [], isLoading } = useQuery({
     queryKey: ['usuarios'],
@@ -62,8 +66,16 @@ export default function UsuariosPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['usuarios'] });
       toast.success('Usuario desactivado');
+      setConfirmId(null);
     },
-    onError: () => toast.error('Error al desactivar el usuario'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error
+        ?? err?.response?.data?.message
+        ?? err?.message
+        ?? 'Error al desactivar el usuario';
+      toast.error(msg);
+      setConfirmId(null);
+    },
   });
 
   const cambiarPwdMutation = useMutation({
@@ -241,7 +253,7 @@ export default function UsuariosPage() {
                           </button>
                           {u.id !== yo?.id && (
                             <button
-                              onClick={() => desactivarMutation.mutate(u.id)}
+                              onClick={() => setConfirmId(u.id)}
                               title="Desactivar usuario"
                               className="p-1.5 text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
                             >
@@ -327,6 +339,16 @@ export default function UsuariosPage() {
           isPending={cambiarPwdMutation.isPending}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmId !== null}
+        title="¿Desactivar usuario?"
+        description="El usuario no podrá iniciar sesión. Puedes reactivarlo en cualquier momento."
+        confirmLabel="Desactivar"
+        loading={desactivarMutation.isPending}
+        onConfirm={() => { if (confirmId !== null) desactivarMutation.mutate(confirmId); }}
+        onCancel={() => setConfirmId(null)}
+      />
     </div>
   );
 }

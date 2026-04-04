@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart2, Download, TrendingUp, Package, Printer, FileText, TableIcon, CalendarRange } from 'lucide-react';
+import { BarChart2, Download, TrendingUp, Package, Printer, FileText, TableIcon, CalendarRange, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { utils as xlsxUtils, writeFile as xlsxWriteFile } from 'xlsx';
 import { toast } from 'sonner';
 import api from '../../services/api';
@@ -19,6 +19,12 @@ export default function ReportesPage() {
   const [fechaDesde, setFechaDesde] = useState(hace30);
   const [fechaHasta, setFechaHasta] = useState(today);
   const [exportandoMov, setExportandoMov] = useState(false);
+
+  // Paginación e inventario completo
+  const [buscarStock, setBuscarStock] = useState('');
+  const [pageStock, setPageStock] = useState(1);
+  const PAGE_SIZE = 15;
+
   const { data: masUsados = [], isLoading: loadingUsados } = useQuery({
     queryKey: ['mas-usados'],
     queryFn: () => api.get('/reportes/mas-usados').then(r => r.data),
@@ -30,6 +36,16 @@ export default function ReportesPage() {
     queryFn: () => api.get('/reportes/stock').then(r => r.data),
     retry: false,
   });
+
+  // Filtro y paginación calculados fuera del JSX para evitar problemas con closures
+  const stockFiltrado = (stock as any[]).filter((p: any) =>
+    !buscarStock.trim() ||
+    (p.nombre ?? '').toLowerCase().includes(buscarStock.toLowerCase()) ||
+    (p.sku ?? '').toLowerCase().includes(buscarStock.toLowerCase())
+  );
+  const totalPagesStock = Math.max(1, Math.ceil(stockFiltrado.length / PAGE_SIZE));
+  const safePageStock   = Math.min(pageStock, totalPagesStock);
+  const stockPaginado   = stockFiltrado.slice((safePageStock - 1) * PAGE_SIZE, safePageStock * PAGE_SIZE);
 
   const exportarCSV = () => {
     const headers = ['SKU', 'Nombre', 'Categoría', 'Stock Actual', 'Stock Mínimo', 'Unidad', 'Ubicación'];
@@ -320,10 +336,29 @@ export default function ReportesPage() {
       </div>
 
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-100 dark:border-slate-700 transition-colors">
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-slate-700">
-          <BarChart2 className="w-5 h-5 text-gray-500 dark:text-slate-400" />
-          <h2 className="font-semibold text-gray-900 dark:text-slate-100">Reporte de inventario completo</h2>
+        {/* Encabezado con búsqueda */}
+        <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-gray-100 dark:border-slate-700">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <BarChart2 className="w-5 h-5 text-gray-500 dark:text-slate-400 flex-shrink-0" />
+            <h2 className="font-semibold text-gray-900 dark:text-slate-100">Reporte de inventario completo</h2>
+            {!loadingStock && (
+              <span className="text-xs text-gray-400 dark:text-slate-500 ml-1">
+                ({stockFiltrado.length} artículos)
+              </span>
+            )}
+          </div>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar por nombre o SKU…"
+              value={buscarStock}
+              onChange={e => { setBuscarStock(e.target.value); setPageStock(1); }}
+              className="pl-8 pr-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
+            />
+          </div>
         </div>
+
         <div className="overflow-x-auto">
           {loadingStock ? (
             <div className="p-4 space-y-3">
@@ -334,37 +369,96 @@ export default function ReportesPage() {
               ))}
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-slate-900">
-                <tr>
-                  {['SKU', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Estado', 'Unidad', 'Ubicación'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
-                {stock.map((p: any) => (
-                  <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${p.stockActual <= p.stockMinimo ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">{p.sku}</td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-slate-100">{p.nombre}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{p.categoria.nombre}</td>
-                    <td className="px-4 py-3 font-semibold dark:text-slate-200">{p.stockActual}</td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.stockMinimo}</td>
-                    <td className="px-4 py-3">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        p.stockActual === 0 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' :
-                        p.stockActual <= p.stockMinimo ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400' :
-                        'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
-                      }`}>
-                        {p.stockActual === 0 ? 'Sin stock' : p.stockActual <= p.stockMinimo ? 'Stock bajo' : 'OK'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.unidad}</td>
-                    <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.ubicacion || '—'}</td>
+            <>
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-900">
+                  <tr>
+                    {['SKU', 'Nombre', 'Categoría', 'Stock', 'Mínimo', 'Estado', 'Unidad', 'Ubicación'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
+                  {stockPaginado.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-10 text-center text-gray-400 dark:text-slate-500 text-sm">
+                        No se encontraron artículos
+                      </td>
+                    </tr>
+                  ) : stockPaginado.map((p: any) => (
+                    <tr key={p.id} className={`hover:bg-gray-50 dark:hover:bg-slate-700/50 transition-colors ${p.stockActual <= p.stockMinimo ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-slate-400">{p.sku}</td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-slate-100">{p.nombre}</td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-slate-300">{p.categoria.nombre}</td>
+                      <td className="px-4 py-3 font-semibold dark:text-slate-200">{p.stockActual}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.stockMinimo}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          p.stockActual === 0
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'
+                            : p.stockActual <= p.stockMinimo
+                            ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'
+                            : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400'
+                        }`}>
+                          {p.stockActual === 0 ? 'Sin stock' : p.stockActual <= p.stockMinimo ? 'Stock bajo' : 'OK'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.unidad}</td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-slate-400">{p.ubicacion || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Controles de paginación */}
+              {totalPagesStock > 1 && (
+                <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100 dark:border-slate-700">
+                  <p className="text-xs text-gray-500 dark:text-slate-400">
+                    Mostrando {((safePageStock - 1) * PAGE_SIZE) + 1}–{Math.min(safePageStock * PAGE_SIZE, stockFiltrado.length)} de {stockFiltrado.length}
+                  </p>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setPageStock(p => Math.max(1, p - 1))}
+                      disabled={safePageStock === 1}
+                      className="p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    {Array.from({ length: totalPagesStock }, (_, i) => i + 1)
+                      .filter(n => n === 1 || n === totalPagesStock || Math.abs(n - safePageStock) <= 1)
+                      .reduce<(number | '…')[]>((acc, n, idx, arr) => {
+                        if (idx > 0 && (arr[idx - 1] as number) < n - 1) acc.push('…');
+                        acc.push(n);
+                        return acc;
+                      }, [])
+                      .map((n, i) => n === '…' ? (
+                        <span key={`dots-${i}`} className="px-1 text-gray-400 dark:text-slate-500 text-sm">…</span>
+                      ) : (
+                        <button
+                          key={n}
+                          onClick={() => setPageStock(n as number)}
+                          className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                            safePageStock === n
+                              ? 'bg-blue-600 text-white'
+                              : 'text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      ))}
+
+                    <button
+                      onClick={() => setPageStock(p => Math.min(totalPagesStock, p + 1))}
+                      disabled={safePageStock === totalPagesStock}
+                      className="p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

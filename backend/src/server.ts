@@ -13,6 +13,8 @@ const app = Fastify({ logger: true });
 
 app.register(cors, {
   origin: ['http://localhost:1420', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true,
 });
 
@@ -31,7 +33,7 @@ app.decorate('authenticate', async function (request: any, reply: any) {
   try {
     await request.jwtVerify();
   } catch (err) {
-    reply.send(err);
+    return reply.status(401).send({ error: 'No autorizado' });
   }
 });
 

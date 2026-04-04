@@ -7,6 +7,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import GlobalSearch from '../ui/GlobalSearch';
+import StockAlertBell from '../ui/StockAlertBell';
 
 const navItems = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
@@ -28,15 +29,15 @@ export default function Layout() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 dark:bg-slate-900 font-sans transition-colors">
+    <div className="flex h-screen bg-gray-100 dark:bg-slate-900 font-sans transition-colors duration-300">
       {/* Sidebar */}
-      <aside className="w-64 bg-slate-800 dark:bg-slate-950 text-white flex flex-col">
+      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-100 flex flex-col transition-colors duration-300">
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-700 dark:border-slate-800">
-          <Warehouse className="w-7 h-7 text-blue-400" />
+        <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-200 dark:border-slate-700">
+          <Warehouse className="w-7 h-7 text-blue-600 dark:text-blue-400" />
           <div>
-            <p className="font-bold text-sm leading-tight">Almacén</p>
-            <p className="text-xs text-slate-400">Mantenimiento</p>
+            <p className="font-bold text-sm leading-tight text-slate-800 dark:text-white">Almacén</p>
+            <p className="text-xs text-slate-400 dark:text-slate-400">Mantenimiento</p>
           </div>
         </div>
 
@@ -50,7 +51,7 @@ export default function Layout() {
                 `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                   isActive
                     ? 'bg-blue-600 text-white'
-                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`
               }
             >
@@ -68,7 +69,7 @@ export default function Layout() {
               `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                 isActive
                   ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
               }`
             }
           >
@@ -78,12 +79,12 @@ export default function Layout() {
         </div>
 
         {/* Usuario */}
-        <div className="px-4 py-4 border-t border-slate-700 dark:border-slate-800">
-          <p className="text-xs text-slate-400 truncate">{usuario?.nombre}</p>
-          <p className="text-xs text-slate-500 mb-3">{usuario?.rol}</p>
+        <div className="px-4 py-4 border-t border-slate-200 dark:border-slate-700">
+          <p className="text-xs text-slate-600 dark:text-slate-400 truncate">{usuario?.nombre}</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">{usuario?.rol}</p>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-2 text-xs text-slate-400 hover:text-red-400 transition-colors"
+            className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 transition-colors"
           >
             <LogOut className="w-4 h-4" />
             Cerrar sesión
@@ -94,9 +95,10 @@ export default function Layout() {
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="bg-white dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700 px-6 py-3 flex items-center gap-4 transition-colors">
+        <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-3 flex items-center gap-4 transition-colors duration-300">
           <GlobalSearch />
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
+            <StockAlertBell />
             <button
               onClick={toggle}
               className="p-2 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
@@ -110,7 +112,17 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
-      <Toaster richColors position="top-right" theme={isDark ? 'dark' : 'light'} />
+      <Toaster
+        richColors
+        position="top-right"
+        theme={isDark ? 'dark' : 'light'}
+        toastOptions={{
+          classNames: {
+            success: '!bg-green-500 !text-white !border-green-600',
+            error:   '!bg-red-600   !text-white !border-red-700',
+          },
+        }}
+      />
     </div>
   );
 }

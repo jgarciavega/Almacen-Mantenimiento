@@ -4,23 +4,26 @@ import prisma from '../prisma';
 import { CreateUsuarioSchema, UpdateUsuarioSchema, formatZodErrors } from '../schemas';
 
 export async function usuariosRoutes(app: FastifyInstance) {
-  const auth = { onRequest: [(app as any).authenticate] };
+  const auth = async (request: any, reply: any) => {
+    await (app as any).authenticate(request, reply);
+  };
 
-  const soloAdmin = async (request: any, reply: any) => {
+  const adminAuth = async (request: any, reply: any) => {
+    await (app as any).authenticate(request, reply);
+    if (reply.sent) return; // authenticate ya envió un 401
     if (request.user?.rol !== 'ADMIN') {
       return reply.status(403).send({ error: 'Solo administradores' });
     }
   };
-  const adminAuth = { onRequest: [(app as any).authenticate, soloAdmin] };
 
-  app.get('/', adminAuth, async () => {
+  app.get('/', { onRequest: adminAuth }, async () => {
     return prisma.usuario.findMany({
       select: { id: true, nombre: true, email: true, rol: true, activo: true, createdAt: true },
       orderBy: { nombre: 'asc' },
     });
   });
 
-  app.post('/', adminAuth, async (request, reply) => {
+  app.post('/', { onRequest: adminAuth }, async (request, reply) => {
     const parsed = CreateUsuarioSchema.safeParse(request.body);
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
@@ -36,34 +39,8 @@ export async function usuariosRoutes(app: FastifyInstance) {
     });
   });
 
-  app.put('/:id', adminAuth, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const parsed = UpdateUsuarioSchema.safeParse(request.body);
-    if (!parsed.success) {
-      return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
-    }
-    const { nombre, rol, activo, password } = parsed.data;
-    const updateData: any = { nombre, rol, activo };
-    if (password) updateData.password = await bcrypt.hash(password, 10);
-
-    return prisma.usuario.update({
-      where: { id: Number(id) },
-      data: updateData,
-      select: { id: true, nombre: true, email: true, rol: true, activo: true },
-    });
-  });
-
-  app.delete('/:id', adminAuth, async (request) => {
-    const { id } = request.params as { id: string };
-    return prisma.usuario.update({
-      where: { id: Number(id) },
-      data: { activo: false },
-      select: { id: true, nombre: true, activo: true },
-    });
-  });
-
-  // Cambiar contraseña propia (cualquier usuario autenticado)
-  app.put('/me/password', auth, async (request, reply) => {
+  // Cambiar contraseña propia — registrada antes de /:id para evitar conflictos de ruta
+  app.put('/me/password', { onRequest: auth }, async (request, reply) => {
     const { passwordActual, passwordNuevo } = request.body as { passwordActual: string; passwordNuevo: string };
     if (!passwordActual || !passwordNuevo) {
       return reply.status(400).send({ error: 'Debes proporcionar la contraseña actual y la nueva' });
@@ -83,5 +60,31 @@ export async function usuariosRoutes(app: FastifyInstance) {
       data: { password: await bcrypt.hash(passwordNuevo, 10) },
     });
     return { ok: true };
+  });
+
+  app.put('/:id', { onRequest: adminAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    const parsed = UpdateUsuarioSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
+    }
+    const { nombre, rol, activo, password } = parsed.data;
+    const updateData: any = { nombre, rol, activo };
+    if (password) updateData.password = await bcrypt.hash(password, 10);
+
+    return prisma.usuario.update({
+      where: { id: Number(id) },
+      data: updateData,
+      select: { id: true, nombre: true, email: true, rol: true, activo: true },
+    });
+  });
+
+  app.delete('/:id', { onRequest: adminAuth }, async (request, reply) => {
+    const { id } = request.params as { id: string };
+    return prisma.usuario.update({
+      where: { id: Number(id) },
+      data: { activo: false },
+      select: { id: true, nombre: true, activo: true },
+    });
   });
 }
