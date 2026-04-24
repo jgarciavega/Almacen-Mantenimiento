@@ -8,6 +8,7 @@ import { proveedoresRoutes } from './routes/proveedores';
 import { usuariosRoutes } from './routes/usuarios';
 import { reportesRoutes } from './routes/reportes';
 import { alertasRoutes } from './routes/alertas';
+import { configuracionRoutes } from './routes/configuracion';
 
 const app = Fastify({ logger: true });
 
@@ -45,6 +46,7 @@ app.register(proveedoresRoutes, { prefix: '/api/proveedores' });
 app.register(usuariosRoutes, { prefix: '/api/usuarios' });
 app.register(reportesRoutes, { prefix: '/api/reportes' });
 app.register(alertasRoutes, { prefix: '/api/alertas' });
+app.register(configuracionRoutes, { prefix: '/api/configuracion' });
 
 app.get('/health', async () => ({ status: 'ok' }));
 

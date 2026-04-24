@@ -23,8 +23,8 @@ export default function StockAlertBell() {
   const { data } = useQuery<{ total: number; alertas: Alerta[] }>({
     queryKey: ['alertas-bell'],
     queryFn: () => api.get('/alertas').then((r: any) => r.data),
-    refetchInterval: 5 * 60 * 1000, // cada 5 minutos
-    staleTime: 60_000,
+    refetchInterval: 30_000, // cada 30 segundos
+    staleTime: 20_000,
   });
 
   const alertas = data?.alertas ?? [];

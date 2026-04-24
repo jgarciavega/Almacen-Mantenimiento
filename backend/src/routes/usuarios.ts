@@ -68,8 +68,14 @@ export async function usuariosRoutes(app: FastifyInstance) {
     if (!parsed.success) {
       return reply.status(400).send({ error: 'Datos inválidos', campos: formatZodErrors(parsed.error) });
     }
-    const { nombre, rol, activo, password } = parsed.data;
-    const updateData: any = { nombre, rol, activo };
+    const { nombre, rol, activo, password, email } = parsed.data;
+    if (email) {
+      const existeEmail = await prisma.usuario.findFirst({
+        where: { email, NOT: { id: Number(id) } },
+      });
+      if (existeEmail) return reply.status(400).send({ error: 'El email ya está en uso por otro usuario' });
+    }
+    const updateData: any = { nombre, rol, activo, email };
     if (password) updateData.password = await bcrypt.hash(password, 10);
 
     return prisma.usuario.update({

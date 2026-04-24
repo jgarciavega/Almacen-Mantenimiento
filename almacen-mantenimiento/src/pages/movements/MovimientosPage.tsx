@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import api from '../../services/api';
 import { Movimiento } from '../../types';
 import { TableSkeleton } from '../../components/ui/Skeleton';
+import { useAuthStore } from '../../store/authStore';
 
 type FormErrors = { productoId?: string; cantidad?: string };
 
@@ -12,18 +13,20 @@ const LIMIT = 10;
 
 export default function MovimientosPage() {
   const qc = useQueryClient();
+  const { usuario } = useAuthStore();
 
   // Filtros
   const [buscar,    setBuscar]    = useState('');
   const [filtroTipo, setFiltroTipo] = useState('TODOS');
   const [filtroProducto, setFiltroProducto] = useState('');
+  const [filtroUsuario, setFiltroUsuario] = useState('');
   const [desde,    setDesde]    = useState('');
   const [hasta,    setHasta]    = useState('');
   const [page,     setPage]     = useState(1);
 
   // Form
   const [showForm,    setShowForm]    = useState(false);
-  const [form,        setForm]        = useState({ productoId: '', tipo: 'ENTRADA', cantidad: 1, motivo: '', referencia: '', recibidoPor: '' });
+  const [form,        setForm]        = useState({ productoId: '', tipo: 'ENTRADA', cantidad: 1, motivo: '', referencia: '', entregadoPor: '', recibidoPor: '' });
   const [formErrors,  setFormErrors]  = useState<FormErrors>({});
 
   const params = {
@@ -32,6 +35,7 @@ export default function MovimientosPage() {
     ...(buscar          && { buscar }),
     ...(filtroTipo !== 'TODOS' && { tipo: filtroTipo }),
     ...(filtroProducto  && { productoId: filtroProducto }),
+    ...(filtroUsuario   && { usuarioId: filtroUsuario }),
     ...(desde           && { desde }),
     ...(hasta           && { hasta }),
   };
@@ -53,6 +57,14 @@ export default function MovimientosPage() {
   });
   const productos = productosResult?.data ?? [];
 
+  const { data: usuariosResult } = useQuery({
+    queryKey: ['usuarios-selector'],
+    queryFn:  () => api.get('/usuarios').then(r => r.data),
+    enabled:  usuario?.rol === 'ADMIN',
+    retry: false,
+  });
+  const usuarios = usuariosResult?.data ?? [];
+
   const registrarMutation = useMutation({
     mutationFn: (data: any) => api.post('/movimientos', data),
     onSuccess: () => {
@@ -60,7 +72,7 @@ export default function MovimientosPage() {
       qc.invalidateQueries({ queryKey: ['productos'] });
       toast.success('Movimiento registrado');
       setShowForm(false);
-      setForm({ productoId: '', tipo: 'ENTRADA', cantidad: 1, motivo: '', referencia: '', recibidoPor: '' });
+      setForm({ productoId: '', tipo: 'ENTRADA', cantidad: 1, motivo: '', referencia: '', entregadoPor: '', recibidoPor: '' });
       setFormErrors({});
     },
     onError: () => toast.error('Error al registrar el movimiento'),
@@ -88,10 +100,10 @@ export default function MovimientosPage() {
 
   const resetFiltros = () => {
     setBuscar(''); setFiltroTipo('TODOS'); setFiltroProducto('');
-    setDesde(''); setHasta(''); setPage(1);
+    setFiltroUsuario(''); setDesde(''); setHasta(''); setPage(1);
   };
 
-  const hayFiltros = buscar || filtroTipo !== 'TODOS' || filtroProducto || desde || hasta;
+  const hayFiltros = buscar || filtroTipo !== 'TODOS' || filtroProducto || filtroUsuario || desde || hasta;
 
   const inputCls = (err?: string) =>
     `w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 transition-colors bg-white dark:bg-slate-700 dark:text-slate-100 ${
@@ -158,11 +170,20 @@ export default function MovimientosPage() {
         </div>
 
         {/* Filtro por artículo */}
-        <select value={filtroProducto} onChange={e => { setFiltroProducto(e.target.value); setPage(1); }}
-          className="w-full sm:w-auto border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-slate-100">
-          <option value="">Todos los artículos</option>
-          {(productos as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-        </select>
+        <div className="flex flex-wrap gap-3">
+          <select value={filtroProducto} onChange={e => { setFiltroProducto(e.target.value); setPage(1); }}
+            className="flex-1 min-w-[200px] border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-slate-100">
+            <option value="">Todos los artículos</option>
+            {(productos as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+          </select>
+          {usuario?.rol === 'ADMIN' && (
+            <select value={filtroUsuario} onChange={e => { setFiltroUsuario(e.target.value); setPage(1); }}
+              className="flex-1 min-w-[180px] border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-700 dark:text-slate-100">
+              <option value="">Todos los usuarios</option>
+              {(usuarios as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* Tabla */}
@@ -232,6 +253,7 @@ export default function MovimientosPage() {
             {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
               const start = Math.max(1, Math.min(page - 2, totalPages - 4));
               const n = start + i;
+              if (n < 1 || n > totalPages) return null;
               return (
                 <button key={n} onClick={() => setPage(n)}
                   className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
@@ -259,7 +281,11 @@ export default function MovimientosPage() {
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg p-6">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-4">Registrar movimiento</h2>
+           <h2 className="text-lg font-bold text-gray-900 dark:text-slate-100 mb-1">Registrar movimiento</h2>
+             <div className="flex items-center gap-2 mb-4 text-sm text-gray-500 dark:text-slate-400">
+               <User className="w-4 h-4 text-blue-500" />
+               <span>Registrando como: <span className="font-semibold text-blue-600 dark:text-blue-400">{usuario?.nombre}</span></span>
+             </div>
             <form onSubmit={handleSubmit} className="space-y-3" noValidate>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Artículo *</label>
@@ -282,6 +308,10 @@ export default function MovimientosPage() {
                   <input type="number" min="1" value={form.cantidad} onChange={e => { setForm({...form, cantidad: Number(e.target.value)}); setFormErrors(p => ({...p, cantidad: undefined})); }} className={inputCls(formErrors.cantidad)} />
                   {formErrors.cantidad && <p className="text-xs text-red-500 mt-1">{formErrors.cantidad}</p>}
                 </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Entregado por (proveedor / origen)</label>
+                <input value={form.entregadoPor} onChange={e => setForm({...form, entregadoPor: e.target.value})} placeholder="Ej: Ferretería Central" className={inputCls()} />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">{form.tipo === 'ENTRADA' ? 'Recibido por (almacenista)' : 'Recibido por (quién recibe)'}</label>

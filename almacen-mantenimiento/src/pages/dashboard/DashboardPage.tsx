@@ -443,9 +443,9 @@ export default function DashboardPage() {
                     </div>
                     <div className="text-right flex-shrink-0">
                       <p className={`text-lg font-bold ${a.critico ? 'text-red-600 dark:text-red-400' : 'text-orange-600 dark:text-orange-400'}`}>
-                        {a.stockactual ?? a.stockActual} <span className="text-sm font-normal">{a.unidad}</span>
+                        {a.stockActual} <span className="text-sm font-normal">{a.unidad}</span>
                       </p>
-                      <p className="text-xs text-gray-400 dark:text-slate-500">mín: {a.stockminimo ?? a.stockMinimo} {a.unidad}</p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500">mín: {a.stockMinimo} {a.unidad}</p>
                     </div>
                   </div>
                 </div>

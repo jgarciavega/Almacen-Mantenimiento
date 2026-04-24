@@ -75,6 +75,7 @@ export const CreateUsuarioSchema = z.object({
 
 export const UpdateUsuarioSchema = z.object({
   nombre:   z.string().min(2).max(255).trim().optional(),
+  email:    z.string().regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Email inválido').optional(),
   rol:      z.enum(['ADMIN', 'ALMACENISTA']).optional(),
   activo:   z.boolean().optional(),
   password: z.string().min(6, 'Mínimo 6 caracteres').optional(),

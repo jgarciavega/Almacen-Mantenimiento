@@ -34,7 +34,7 @@ export async function proveedoresRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const proveedor = await prisma.proveedor.findUnique({
       where: { id: Number(id) },
-      include: { productos: { include: { producto: true } } },
+      include: { productos: { include: { producto: { include: { categoria: true } } } } },
     });
     if (!proveedor) return reply.status(404).send({ error: 'Proveedor no encontrado' });
     return proveedor;

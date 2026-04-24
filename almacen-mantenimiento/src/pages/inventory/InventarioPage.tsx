@@ -34,6 +34,7 @@ function validateForm(form: { nombre: string; sku: string; categoriaId: string; 
 export default function InventarioPage() {
   const qc = useQueryClient();
   const [buscar, setBuscar] = useState('');
+  const [filtroCategoria, setFiltroCategoria] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editando, setEditando] = useState<Producto | null>(null);
   const [form, setForm] = useState({ nombre: '', sku: '', descripcion: '', stockActual: 0, stockMinimo: 1, unidad: 'pza', ubicacion: '', categoriaId: '' });
@@ -46,8 +47,8 @@ export default function InventarioPage() {
   const { usuario: yo } = useAuthStore();
 
   const { data: result, isLoading } = useQuery({
-    queryKey: ['productos', buscar, page],
-    queryFn: () => api.get('/productos', { params: { buscar, page, limit: 20 } }).then(r => r.data),
+    queryKey: ['productos', buscar, filtroCategoria, page],
+    queryFn: () => api.get('/productos', { params: { buscar, page, limit: 20, ...(filtroCategoria && { categoriaId: filtroCategoria }) } }).then(r => r.data),
     retry: false,
     placeholderData: (prev) => prev,
   });
@@ -119,7 +120,7 @@ export default function InventarioPage() {
     const ctx = canvas.getContext('2d');
     const img = new Image();
     img.onload = () => { ctx?.drawImage(img, 0, 0); canvas.toBlob(blob => { if (blob) { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `qr-${qrProducto.sku}.png`; a.click(); URL.revokeObjectURL(url); } }); };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
   };
 
   const inputClass = (hasError?: string) =>
@@ -151,15 +152,31 @@ export default function InventarioPage() {
         </div>
       </div>
 
-      {/* Buscador */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-        <input
-          value={buscar}
-          onChange={e => { setBuscar(e.target.value); setPage(1); }}
-          placeholder="Buscar artículo..."
-          className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-400"
-        />
+      {/* Buscador + filtro categoría */}
+      <div className="flex flex-wrap gap-3">
+        <div className="relative max-w-sm flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            value={buscar}
+            onChange={e => { setBuscar(e.target.value); setPage(1); }}
+            placeholder="Buscar artículo..."
+            className="w-full pl-9 pr-4 py-2 border border-gray-300 dark:border-slate-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-400"
+          />
+        </div>
+        <select
+          value={filtroCategoria}
+          onChange={e => { setFiltroCategoria(e.target.value); setPage(1); }}
+          className="border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-slate-800 dark:text-slate-100"
+        >
+          <option value="">Todas las categorías</option>
+          {(categorias as any[]).map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+        </select>
+        {(buscar || filtroCategoria) && (
+          <button onClick={() => { setBuscar(''); setFiltroCategoria(''); setPage(1); }}
+            className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+            <X className="w-3 h-3" /> Limpiar
+          </button>
+        )}
       </div>
 
       {/* Tabla */}

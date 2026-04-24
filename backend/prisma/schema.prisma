@@ -97,3 +97,14 @@ enum TipoMovimiento {
   ENTRADA
   SALIDA
 }
+
+model Configuracion {
+  id               Int      @id @default(1)
+  empresaNombre    String   @default("")
+  empresaSlogan    String   @default("")
+  empresaDireccion String   @default("")
+  empresaTelefono  String   @default("")
+  empresaEmail     String   @default("")
+  sistemaNombre    String   @default("Control de Almacén")
+  updatedAt        DateTime @updatedAt
+}

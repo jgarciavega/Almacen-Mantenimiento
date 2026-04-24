@@ -6,24 +6,19 @@ export async function alertasRoutes(app: FastifyInstance) {
 
   // Retorna productos cuyo stock está en o por debajo del mínimo
   app.get('/', auth, async () => {
-    const productos = await prisma.producto.findMany({
-      where: { activo: true },
-      include: { categoria: true },
-    });
+    const alertas = await prisma.$queryRaw<any[]>`
+      SELECT p.id, p.nombre, p.sku, p."stockActual", p."stockMinimo", p.unidad,
+             c.nombre AS categoria,
+             CASE WHEN p."stockActual" = 0 THEN true ELSE false END AS critico
+      FROM "Producto" p
+      JOIN "Categoria" c ON p."categoriaId" = c.id
+      WHERE p.activo = true AND p."stockActual" <= p."stockMinimo"
+      ORDER BY p."stockActual" ASC
+    `;
 
-    const alertas = productos.filter(p => p.stockActual <= p.stockMinimo);
     return {
       total: alertas.length,
-      alertas: alertas.map(p => ({
-        id: p.id,
-        nombre: p.nombre,
-        sku: p.sku,
-        stockActual: p.stockActual,
-        stockMinimo: p.stockMinimo,
-        unidad: p.unidad,
-        categoria: p.categoria.nombre,
-        critico: p.stockActual === 0,
-      })),
+      alertas,
     };
   });
 }

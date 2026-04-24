@@ -297,12 +297,10 @@ export default function UsuariosPage() {
                 <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Nombre *</label>
                 <input required value={form.nombre} onChange={e => setForm({...form, nombre: e.target.value})} className={inputCls} />
               </div>
-              {!editando && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Email *</label>
-                  <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputCls} />
-                </div>
-              )}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Email *</label>
+                <input type="email" required value={form.email} onChange={e => setForm({...form, email: e.target.value})} className={inputCls} />
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">
                   {editando ? 'Nueva contraseña (dejar vacío para no cambiar)' : 'Contraseña *'}

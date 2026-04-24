@@ -7,7 +7,7 @@ export async function movimientosRoutes(app: FastifyInstance) {
 
   // Listar movimientos con filtros y paginación
   app.get('/', auth, async (request) => {
-    const { productoId, tipo, desde, hasta, buscar, page = '1', limit = '20' } = request.query as any;
+    const { productoId, tipo, desde, hasta, buscar, usuarioId, page = '1', limit = '20' } = request.query as any;
 
     const pageNum  = Math.max(1, parseInt(page));
     const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
@@ -15,6 +15,7 @@ export async function movimientosRoutes(app: FastifyInstance) {
 
     const where: any = {
       ...(productoId && { productoId: Number(productoId) }),
+      ...(usuarioId  && { usuarioId:  Number(usuarioId) }),
       ...(tipo && tipo !== 'TODOS' && { tipo }),
       ...(desde || hasta ? {
         createdAt: {

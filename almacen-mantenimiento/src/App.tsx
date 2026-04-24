@@ -19,6 +19,11 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   return token ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const usuario = useAuthStore((s) => s.usuario);
+  return usuario?.rol === 'ADMIN' ? <>{children}</> : <Navigate to="/dashboard" replace />;
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -38,7 +43,7 @@ export default function App() {
             <Route path="inventario" element={<InventarioPage />} />
             <Route path="movimientos" element={<MovimientosPage />} />
             <Route path="proveedores" element={<ProveedoresPage />} />
-            <Route path="usuarios" element={<UsuariosPage />} />
+            <Route path="usuarios" element={<AdminRoute><UsuariosPage /></AdminRoute>} />
             <Route path="reportes" element={<ReportesPage />} />
             <Route path="configuracion" element={<ConfiguracionPage />} />
           </Route>

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Warehouse, Lock, Mail } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
+import almacenGif from '../../assets/almacen.gif';
 import api from '../../services/api';
 import { useAuthStore } from '../../store/authStore';
 
@@ -10,7 +11,7 @@ type FormErrors = {
 };
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('admin@almacen.com');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [formErrors, setFormErrors] = useState<FormErrors>({});
@@ -23,7 +24,7 @@ export default function LoginPage() {
     if (!email.trim()) errors.email = 'El correo electrónico es obligatorio';
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.email = 'Ingresa un correo electrónico válido';
     if (!password) errors.password = 'La contraseña es obligatoria';
-    else if (password.length < 4) errors.password = 'La contraseña debe tener al menos 4 caracteres';
+    else if (password.length < 6) errors.password = 'La contraseña debe tener al menos 6 caracteres';
     return errors;
   };
 
@@ -60,7 +61,7 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-2xl mb-4">
-            <Warehouse className="w-8 h-8 text-blue-600" />
+            <img src={almacenGif} alt="Almacén" className="w-12 h-12 object-contain" />
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Control de Almacén</h1>
           <p className="text-gray-500 text-sm mt-1">Área de Mantenimiento</p>
